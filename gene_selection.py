@@ -254,9 +254,9 @@ def add_mean_into_gene_dataframe (adata: anndata._core.anndata.AnnData,
 
         raw_counts = raw_counts = sel_adata_group.X
         # for sparse matrix
-        if isinstance(raw_counts, anndata._core.views.SparseCSCView):
+        if isinstance(type(raw_counts), type(anndata._core.views.SparseCSCView)):
             raw_counts = raw_counts.toarray()
-        if isinstance(raw_counts, np.ndarray):
+        if isinstance(type(raw_counts), type(np.ndarray)):
             raw_means = raw_counts.mean(axis=0) # cells are averaged  
 
             def add_1_to_mean(raw_mean):

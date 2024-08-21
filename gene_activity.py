@@ -118,9 +118,9 @@ def gene_activity_raw_groups (sel_genes:list,
         sel_adata_group = sel_adata[sel_adata.obs[groupby]==_group]
         raw_counts = sel_adata_group.X
         # convert sparse mtx if needed
-        if isinstance(raw_counts, anndata._core.views.SparseCSCView):
+        if isinstance(type(raw_counts), type(anndata._core.views.SparseCSCView)):
             raw_counts = raw_counts.toarray()
-        if isinstance(raw_counts, np.ndarray):
+        if isinstance(type(raw_counts), type(np.ndarray)):
             # reduce accordingly for genes
             if report_type == 'mean':
                 result = np.nanmean(raw_counts,axis=1)
@@ -143,6 +143,7 @@ def gene_activity_average_groups (sel_genes:list,
                         sel_adata: anndata._core.anndata.AnnData, 
                         cell_groups,
                         groupby,
+                        add_one=False,
                         ref_norm_list = [],
                         report_type ='sum'):
 
@@ -159,20 +160,28 @@ def gene_activity_average_groups (sel_genes:list,
         sel_adata_group = sel_adata[sel_adata.obs[groupby]==_group]
         raw_counts = sel_adata_group.X
         # convert sparse mtx if needed
-        if isinstance(raw_counts, anndata._core.views.SparseCSCView):
+        if isinstance(type(raw_counts), type(anndata._core.views.SparseCSCView)):
             raw_counts = raw_counts.toarray()
-        if isinstance(raw_counts, np.ndarray):
+            norm_check = False
+        else:
+            norm_check = True
+        if isinstance(type(raw_counts), type(np.ndarray)):
             raw_means = raw_counts.mean(axis=0) # cells are averaged  
             def add_1_to_mean(raw_mean):
-                if raw_mean<1:
+                if raw_mean<1:   # do not do this for (normalized) counts which are always lower than 1
                     adj_mean=1
                 else:
                     adj_mean=raw_mean
                 return adj_mean
             # reduce accordingly for genes
-            adj_means = list(map(add_1_to_mean, raw_means))
+            if norm_check and not add_one:
+                adj_means = list(map(add_1_to_mean, raw_means))
+                
+            else:
+                adj_means =raw_means
+
             norm_adj_means = np.array(adj_means) * norm_factors
-            
+
             if report_type == 'mean':
                 result = np.nanmean(norm_adj_means)
             elif report_type == 'sum':

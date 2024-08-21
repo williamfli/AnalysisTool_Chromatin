@@ -38,9 +38,9 @@ def mouse_chr_as_num (_chr):
         out_key = int(_chr)
     except:
         if _chr == 'X':
-            out_key = 23
+            out_key = 20
         elif _chr == 'Y':
-            out_key = 24
+            out_key = 21
     return out_key
 
 
@@ -56,15 +56,21 @@ def human_chr_as_num (_chr):
 
 
 
-def sort_loci_df_by_chr_order (im_loci_df: pd.core.frame.DataFrame):
+def sort_loci_df_by_chr_order (im_loci_df: pd.core.frame.DataFrame, genome_type='mouse'):
     """simply sort loci df by their chromosome and chr order"""
-
+    im_loci_df_new = im_loci_df.copy(deep=True)
     # sort im_loci_df for matrix generation if not sorted
-    im_loci_df['chr_as_num'] = im_loci_df['chr'].map(mouse_chr_as_num)
-    im_loci_df = im_loci_df.sort_values(by = ['chr_as_num', 'chr_order'], ignore_index=False)
-    im_loci_df = im_loci_df.drop(columns=['chr_as_num'])
+    if genome_type == 'mouse':
+        im_loci_df_new['chr_as_num'] = im_loci_df['chr'].map(mouse_chr_as_num)
+    elif genome_type == 'human':
+        im_loci_df_new['chr_as_num'] = im_loci_df['chr'].map(human_chr_as_num)
+    else:
+        print ('Unknown genome type, Exit with no sort')
+        return im_loci_df
+    im_loci_df_new = im_loci_df_new.sort_values(by = ['chr_as_num', 'chr_order'], ignore_index=False)
+    im_loci_df_new = im_loci_df_new.drop(columns=['chr_as_num'])
 
-    return im_loci_df
+    return im_loci_df_new
 
 
 
@@ -74,9 +80,9 @@ def sort_mouse_chr(_chr):
         out_key = int(_chr)
     except:
         if _chr == 'X':
-            out_key = 23
+            out_key = 20
         elif _chr == 'Y':
-            out_key = 24
+            out_key = 21
     return out_key
 
 
@@ -297,31 +303,29 @@ def sc_compartment_ratio_by_loci_key (sc_compartment_dict_by_group, cell_group_l
             for _cell_ABs in group_ABs:
                 # check quality first
                 quality_pass = check_cell_quality_by_spot_number (_cell_ABs, spot_num_th=spot_num_th)
-                if quality_pass:
-                    # sub-list to get all ratios for a cell first
-                    loci_ratio_cell = []
-                    # if chr_key exists and there is a valid nd.array 
-                    if _chr_key in _cell_ABs.keys():
-                        if isinstance(_cell_ABs[_chr_key],np.ndarray):
-                            for _ichr_ABs in _cell_ABs[_chr_key]:
-                                #print(_ichr_ABs[_chr_order])
-                                loci_ratio_cell.append(_ichr_ABs[_chr_order])
-                        else:
-                            loci_ratio_cell.append(np.nan)
-                            loci_ratio_cell.append(np.nan)  
-                    # if not chr_key exists, append nan for both copies
-                    else:
+                
+                # sub-list to get all ratios for a cell first
+                loci_ratio_cell = []
+                # if chr_key exists and there is a valid nd.array 
+                if _chr_key in _cell_ABs.keys() and quality_pass:
+                    if isinstance(_cell_ABs[_chr_key],np.ndarray):
+                        for _ichr_ABs in _cell_ABs[_chr_key]:
+                            #print(_ichr_ABs[_chr_order])
+                            loci_ratio_cell.append(_ichr_ABs[_chr_order])
+                    else: # wrong format
                         loci_ratio_cell.append(np.nan)
-                        loci_ratio_cell.append(np.nan)
-                    
-                    # average the ratios for each cell
-                    if average_ratios_in_cell:
-                        mean_ratio_cell = np.nanmean(np.array(loci_ratio_cell)) # warning raised here: nanmean of nans return nan
-                        loci_ratio_list.append(mean_ratio_cell)
-                    else:
-                        loci_ratio_list.extend(loci_ratio_cell)
+                        loci_ratio_cell.append(np.nan)  
+                # if not chr_key exists or cell not good quality, append nan for both copies
                 else:
-                    pass
+                    loci_ratio_cell.append(np.nan)
+                    loci_ratio_cell.append(np.nan)
+                
+                # average the ratios for each cell
+                if average_ratios_in_cell:
+                    mean_ratio_cell = np.nanmean(np.array(loci_ratio_cell)) # warning raised here: nanmean of nans return nan
+                    loci_ratio_list.append(mean_ratio_cell)
+                else:
+                    loci_ratio_list.extend(loci_ratio_cell)
 
             # get nanmedian of the sc into a cell-type bulk average for each loci    
             if report_type == 'raw':   
@@ -340,6 +344,97 @@ def sc_compartment_ratio_by_loci_key (sc_compartment_dict_by_group, cell_group_l
     
     return  _loci_group_df
 
+
+
+
+def check_cell_quality_by_spot_number_vScore (_cell_ABs, spot_num_th=100):
+    """Check the number of decoded spots for each cell zxys dict"""
+
+    loci_nonna_list = []
+    for _chr_key in _cell_ABs.keys():
+        if isinstance(_cell_ABs[_chr_key]['A'],np.ndarray):
+            for _ichr_ABs in _cell_ABs[_chr_key]['A']:
+                loci_nonna_list.append(np.count_nonzero(~np.isnan(_ichr_ABs)))
+
+    if np.sum(loci_nonna_list)>=spot_num_th:
+        return True
+    else:
+        return False
+
+
+
+# Compartment analysis with the compatibility to average ratio for all copies of the same loci
+def sc_compartment_score_by_loci_key (sc_compartment_score_dict_by_group, cell_group_list, loci_key, report_type = 'median', average_ratios_in_cell=True, spot_num_th=100):
+    
+    """Get the corresponding single-cell AB comparment density ratio by chr, chr_order for a list of cell groups of interest"""
+    _chr_key = loci_key[0]
+    _chr_order = loci_key[1]
+    
+    # append result from single cell for each cell group as column
+    _loci_group_dict_keys = [f"{c}_A" for c in cell_group_list]
+    _loci_group_dict_keys.extend([f"{c}_B" for c in cell_group_list])
+    _loci_group_dict = {_k: [] for _k in  _loci_group_dict_keys}
+     # get the AB ratio for all cell group and append together
+    for _group in cell_group_list:
+        if _group in sc_compartment_score_dict_by_group.keys():
+            # store ratio for each sc
+            loci_Ascore_list = []
+            loci_Bscore_list = []
+            group_ABs = sc_compartment_score_dict_by_group[_group]
+            for _cell_ABs in group_ABs:
+                # check quality first
+                quality_pass = check_cell_quality_by_spot_number_vScore (_cell_ABs, spot_num_th=spot_num_th)
+                
+                # sub-list to get all ratios for a cell first
+                loci_Ascore_cell = []
+                loci_Bscore_cell = []
+                # if chr_key exists and there is a valid nd.array 
+                if _chr_key in _cell_ABs.keys() and quality_pass:
+                    if isinstance(_cell_ABs[_chr_key]['A'],np.ndarray):
+                        for _ichr_ABs in _cell_ABs[_chr_key]['A']:
+                            loci_Ascore_cell.append(_ichr_ABs[_chr_order])
+                    else:
+                        loci_Ascore_cell.append(np.nan)
+                    if isinstance(_cell_ABs[_chr_key]['B'],np.ndarray):
+                        for _ichr_ABs in _cell_ABs[_chr_key]['B']:
+                            loci_Bscore_cell.append(_ichr_ABs[_chr_order])
+                    else:
+                        loci_Bscore_cell.append(np.nan)  
+                # if not chr_key exists or cell not good quality, append nan for both copies
+                else:
+                    loci_Ascore_cell.append(np.nan)
+                    loci_Bscore_cell.append(np.nan) 
+                
+                # average the ratios for each cell
+                if average_ratios_in_cell:
+                    mean_Ascore_cell = np.nanmean(np.array(loci_Ascore_cell)) # warning raised here: nanmean of nans return nan
+                    mean_Bscore_cell = np.nanmean(np.array(loci_Bscore_cell))
+                    loci_Ascore_list.append(mean_Ascore_cell)
+                    loci_Bscore_list.append(mean_Bscore_cell)
+
+                else:
+                    loci_Ascore_list.extend(loci_Ascore_cell)
+                    loci_Bscore_list.extend(loci_Bscore_cell)
+
+            # get nanmedian of the sc into a cell-type bulk average for each loci    
+            if report_type == 'raw':   
+                _loci_group_dict [f'{_group}_A']=loci_Ascore_list
+                _loci_group_dict [f'{_group}_B']=loci_Bscore_list
+            elif report_type == 'mean':   
+                _loci_group_dict [f'{_group}_A']=[np.nanmean(loci_Ascore_list)]
+                _loci_group_dict [f'{_group}_B']=[np.nanmean(loci_Bscore_list)]
+            elif report_type == 'median':   
+                _loci_group_dict [f'{_group}_A']=[np.nanmedian(loci_Ascore_list)]
+                _loci_group_dict [f'{_group}_B']=[np.nanmedian(loci_Bscore_list)]
+                
+        else:
+            print ('The query cell group not present. Skip.')
+            pass
+    
+    _loci_group_df=pd.DataFrame.from_dict(_loci_group_dict,orient='index')
+    _loci_group_df=_loci_group_df.transpose()
+    
+    return  _loci_group_df
 
 
 ##############################################################################################################################

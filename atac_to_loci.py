@@ -4,7 +4,7 @@ import pandas as pd
 import scanpy as sc
 import anndata
 
-from gene_to_loci import loci_pos_format
+from .gene_to_loci import loci_pos_format
 
 
 # Function to find peaks near specific loci 

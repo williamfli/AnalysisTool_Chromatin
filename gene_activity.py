@@ -6,7 +6,7 @@ import anndata
 
 
 
-from gene_selection import check_adata_rank_genes_groups
+from .gene_selection import check_adata_rank_genes_groups
 
 
 def gene_activity_score (sel_genes:list, 

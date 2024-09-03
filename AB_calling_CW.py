@@ -6,7 +6,7 @@ from sklearn.decomposition import PCA
 from sklearn.linear_model import LinearRegression
 import copy
 
-from matrix_plot_CW import plot_cross_correlation_map_and_AB_compartments, plot_cross_correlation_map_and_AB_compartments_v2
+from .matrix_plot_CW import plot_cross_correlation_map_and_AB_compartments, plot_cross_correlation_map_and_AB_compartments_v2
 
 
 # define function for gaussian distribution
